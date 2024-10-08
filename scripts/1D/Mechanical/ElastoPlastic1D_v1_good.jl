@@ -5,8 +5,8 @@ import LinearAlgebra: norm, eigvecs, eigvals
 # BC switch
 # add sxy0
 
-BC_Vy_N = :Neumann
-
+#BC_Vy_N = :Neumann
+BC_Vy_N = :Dirichlet
 function PrincipalStress!(σ1, σ3, τxx, τyy, τzz, τxy, P)
     for i in eachindex(τxy)
         σ  = @SMatrix[-P[i]+τxx[i] τxy[i] 0.; τxy[i] -P[i]+τyy[i] 0.; 0. 0. -P[i]+τzz[i]]
@@ -192,13 +192,13 @@ function main(σ0)
         ν   = 0., 
         c   = 0.0e4,
         ϕ   = 40/180*π,
-        ψ   = 10/180*π,
+        ψ   = 00/180*π,
         θt  = 25/180*π,
         ρ   = 2000.,
-        ηvp = 2.5e7,
+        ηvp = 0.001e7,
         γ̇xy = 0.00001,
-        Δt  = 5,
-        nt  = 1600,
+        Δt  = 1,
+        nt  = 1600*5,
         law = :MC_Vermeer1990,
         oop = :Vermeer1990,
         pl  = true)
@@ -260,7 +260,8 @@ function main(σ0)
     )
 
     rheo.c[Int64(floor(Ncy/2)+1):end] .= params.c/sc.σ
-    # rheo.c[Int64(floor(Ncy/2)+1)] = params.c/sc.σ
+    #rheo.c[Int64(floor(Ncy/2)+1)] = params.c/sc.σ
+    #rheo.c[Int64(floor(Ncy/2)-2):Int64(floor(Ncy/2)+2)] .= params.c/sc.σ
     # @. rheo.K = 2/3 .* rheo.G.*(1 .+ rheo.ν) ./ (1 .- 2 .* rheo.ν)
     τxx  = τxxi*ones(Ncy+1)
     τyy  = τyyi*ones(Ncy+1)
@@ -440,7 +441,7 @@ function main(σ0)
             # p4 = plot((1:it)*ε̇0*Δt*100, probes.εyy[1:it]*100)
             # p4 = plot(εyyt[1:end-1], yv[1:end-1])
             # p4 = scatter!(εyyt[pl.==1], yv[pl.==1])
-            p4 = heatmap((1:Nt)*ε̇0*Δt*100, yv, maps.ε̇xy[1:Nt,:]', title="ε̇xy", xlabel="strain", ylabel="y") #, clim=(0,1)
+            p4 = heatmap((1:Nt)*ε̇0*Δt*100, yv, maps.ε̇xy[1:Nt,:]', title="ε̇xy", xlabel="strain", ylabel="y", clim=(0,20)) # 
             display(plot(p1,p2,p3,p4))
 
             @show Pi, τxxi, τyyi, τzzi, τxyi
