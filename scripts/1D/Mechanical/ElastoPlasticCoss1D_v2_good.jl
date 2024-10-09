@@ -422,12 +422,16 @@ function main(σ0)
         PrincipalStress!(σ1, σ3, τxx, τyy, τzz, τxy, Rz, myz, P, params.lc/sc.L)
         
 
-        # Probe model state
-        _, iA = findmin(σ3.v)
-        _, iB = findmax(σ1.v)
-        probes.θs3_out[it]  = atand(σ3.z[iA] ./ σ3.x[iA])
-        probes.θs3_in[it]   = atand(σ3.z[iB] ./ σ3.x[iB])
-
+        # # Probe model state
+        # _, iA = findmin(σ3.v)
+        # _, iB = findmax(σ1.v)
+        # probes.θs3_out[it]  = atand(σ3.z[iA] ./ σ3.x[iA])
+        # probes.θs3_in[it]   = atand(σ3.z[iB] ./ σ3.x[iB])
+         # Probe model state
+        iA = 1
+        iB = floor(Ncy/2)+1
+         probes.θs3_out[it]  = atand(σ3.z[iA] ./ σ3.x[iA])
+         probes.θs3_in[it]   = atand(σ3.z[iB] ./ σ3.x[iB])
 
 
 
