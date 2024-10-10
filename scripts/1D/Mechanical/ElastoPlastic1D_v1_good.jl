@@ -5,8 +5,8 @@ import LinearAlgebra: norm, eigvecs, eigvals
 # BC switch
 # add sxy0
 
-#BC_Vy_N = :Neumann
-BC_Vy_N = :Dirichlet
+# BC_Vy_N = :Neumann
+ BC_Vy_N = :Dirichlet
 function PrincipalStress!(σ1, σ3, τxx, τyy, τzz, τxy, P)
     for i in eachindex(τxy)
         σ  = @SMatrix[-P[i]+τxx[i] τxy[i] 0.; τxy[i] -P[i]+τyy[i] 0.; 0. 0. -P[i]+τzz[i]]
@@ -195,10 +195,10 @@ function main(σ0)
         ψ   = 00/180*π,
         θt  = 25/180*π,
         ρ   = 2000.,
-        ηvp = 0.001e7,
+        ηvp = 0.0e7,
         γ̇xy = 0.00001,
-        Δt  = 1,
-        nt  = 1600*5,
+        Δt  = 5,
+        nt  = 1600,
         law = :MC_Vermeer1990,
         oop = :Vermeer1990,
         pl  = true)
@@ -249,8 +249,8 @@ function main(σ0)
 
     rheo = (
         c    = params.c/sc.σ*ones(Ncy+1).+250/sc.σ,
-        # c    = params.c/sc.σ*ones(Ncy+1).+0.0000001/sc.σ,
-        # c    = params.c/sc.σ*ones(Ncy+1),
+        # c  = params.c/sc.σ*ones(Ncy+1).+0.0000001/sc.σ,
+        # c  = params.c/sc.σ*ones(Ncy+1),
         ψ    = params.ψ     *ones(Ncy+1),
         ϕ    = params.ϕ     *ones(Ncy+1),
         ν    = params.ν     *ones(Ncy+1),
@@ -259,9 +259,10 @@ function main(σ0)
         ηvp  = params.ηvp   *ones(Ncy+1)/(sc.σ*sc.t),
     )
 
-    rheo.c[Int64(floor(Ncy/2)+1):end] .= params.c/sc.σ
+    #rheo.c[Int64(floor(Ncy/2)+1):end] .= params.c/sc.σ
     #rheo.c[Int64(floor(Ncy/2)+1)] = params.c/sc.σ
     #rheo.c[Int64(floor(Ncy/2)-2):Int64(floor(Ncy/2)+2)] .= params.c/sc.σ
+    rheo.c[Int64(floor(Ncy/2-Ncy/4)):Int64(floor(Ncy/2+Ncy/4))] .= params.c/sc.σ
     # @. rheo.K = 2/3 .* rheo.G.*(1 .+ rheo.ν) ./ (1 .- 2 .* rheo.ν)
     τxx  = τxxi*ones(Ncy+1)
     τyy  = τyyi*ones(Ncy+1)
@@ -303,10 +304,11 @@ function main(σ0)
     )
 
     maps = ( 
-       Vx  = zeros(Nt,Ncy+0),
-       Vy  = zeros(Nt,Ncy+0),
-       P   = zeros(Nt,Ncy+1),
-       ε̇xy = zeros(Nt,Ncy+1),
+       Vx   = zeros(Nt,Ncy+0),
+       Vy   = zeros(Nt,Ncy+0),
+       P    = zeros(Nt,Ncy+1),
+       ε̇xy  = zeros(Nt,Ncy+1),
+       ε̇yyt = zeros(Nt,Ncy+1),
     )
 
     σ1         = (x=zeros(size(τxx)), z=zeros(size(τxx)), v=zeros(size(τxx)) )
@@ -350,10 +352,10 @@ function main(σ0)
         x[iV.x+1:iV.y] .= Vy
         x[iV.y+1:end]  .= P
 
-        ϵglob = 1e-13
+        ϵglob = 1e-11
 
         # Newton iterations
-        for iter=1:100
+        for iter=1:1000
 
             # Residual
             Res!(F, x, P, P0, τxx0, τyy0, τzz0, τxy0, ρ, Vx0, Vy0, V_BC, σ_BC, rheo, iV, NumV, Δy, Δt )
@@ -390,12 +392,15 @@ function main(σ0)
         maps.Vy[it,:]  .= Vy
         maps.P[it,:]   .= P
         maps.ε̇xy[it,2:end-1] .= 0.5*diff(Vx,dims=1)/Δy
-
+        maps.ε̇yyt[it,2:end-1] .= 0.5*diff(Vy,dims=1)/Δy
         PrincipalStress!(σ1, σ3, τxx, τyy, τzz, τxy, P)
 
         # Probe model state
         _, iA = findmin(σ3.v)
         _, iB = findmax(σ1.v)
+
+        #iA = 1
+        #iB = Int64(floor(Ncy/2)+1)
         probes.θs3_out[it]  = atand(σ3.z[iA] ./ σ3.x[iA])
         probes.θs3_in[it]   = atand(σ3.z[iB] ./ σ3.x[iB])
 
@@ -441,7 +446,7 @@ function main(σ0)
             # p4 = plot((1:it)*ε̇0*Δt*100, probes.εyy[1:it]*100)
             # p4 = plot(εyyt[1:end-1], yv[1:end-1])
             # p4 = scatter!(εyyt[pl.==1], yv[pl.==1])
-            p4 = heatmap((1:Nt)*ε̇0*Δt*100, yv, maps.ε̇xy[1:Nt,:]', title="ε̇xy", xlabel="strain", ylabel="y", clim=(0,20)) # 
+            p4 = heatmap((1:Nt)*ε̇0*Δt*100, yv, maps.ε̇xy[1:Nt,:]', title="ε̇xy", xlabel="strain", ylabel="y", clim=(-1,1)) # 
             display(plot(p1,p2,p3,p4))
 
             @show Pi, τxxi, τyyi, τzzi, τxyi
