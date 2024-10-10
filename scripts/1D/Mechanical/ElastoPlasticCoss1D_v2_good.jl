@@ -78,10 +78,10 @@ function LocalStress(VxN, VxS, VyN, VyS, ω̇zN, ω̇zS, P, P0, τxx0, τyy0, τ
     τII   = sqrt(1/2*(τxx^2 + τyy^2 + τzz^2 + (myz/lc)^2) + τxy^2 + Rz^2)
     fc    = τII - c*cos(ϕ) - Pc*sin(ϕ) - ηvp*λ̇
 
-    return τxx, τyy, τzz, τxy, Pc, Rz, myz, fc, pl, ε̇yyt
+    return τxx, τyy, τzz, τxy, Pc, Rz, myz, fc, pl, ε̇yyt, λ̇, τII 
 end
 
-function ComputeStress!(τxx, τyy, τzz, τxy, Pc, Rz, Myz, Fc, Pl, εyyt,  x, P, P0, τxx0, τyy0, τzz0, τxy0, Rz0, myz0, V_BC, σ_BC, rheo, ind, NumV, Δy, Δt )
+function ComputeStress!(τxx, τyy, τzz, τxy, Pc, Rz, Myz, Fc, Pl, εyyt,  x, P, P0, τxx0, τyy0, τzz0, τxy0, Rz0, myz0, V_BC, σ_BC, rheo, ind, NumV, Δy, Δt,lambda_dot, sec_inv)
 
     # Loop over all stress nodes
     for i=1:length(NumV.x)+1
@@ -116,17 +116,19 @@ function ComputeStress!(τxx, τyy, τzz, τxy, Pc, Rz, Myz, Fc, Pl, εyyt,  x, 
             ω̇zN = x[iω̇z]
         end
         # Compute stress and corrected pressure 
-        τ11, τ22, τ33, τ21, pc, rz, myz, fc, pl, ε̇yyt = LocalStress( VxN, VxS, VyN, VyS, ω̇zN, ω̇zS, p, P0[i], τxx0[i], τyy0[i], τzz0[i], τxy0[i], Rz0[i], myz0[i], rheo.G[i], rheo.K[i], rheo.lc[i], rheo.ϕ[i], rheo.ψ[i], rheo.c[i], rheo.ηvp[i], Δy, Δt )
-        τxx[i]   = τ11
-        τyy[i]   = τ22
-        τzz[i]   = τ33
-        τxy[i]   = τ21
-        Pc[i]    = pc
-        Rz[i]    = rz
-        Myz[i]   = myz
-        Fc[i]    = fc
-        Pl[i]    = pl 
-        εyyt[i] += ε̇yyt*Δt
+        τ11, τ22, τ33, τ21, pc, rz, myz, fc, pl, ε̇yyt, λ̇, τII = LocalStress( VxN, VxS, VyN, VyS, ω̇zN, ω̇zS, p, P0[i], τxx0[i], τyy0[i], τzz0[i], τxy0[i], Rz0[i], myz0[i], rheo.G[i], rheo.K[i], rheo.lc[i], rheo.ϕ[i], rheo.ψ[i], rheo.c[i], rheo.ηvp[i], Δy, Δt )
+        τxx[i]         = τ11
+        τyy[i]         = τ22
+        τzz[i]         = τ33
+        τxy[i]         = τ21
+        Pc[i]          = pc
+        Rz[i]          = rz
+        Myz[i]         = myz
+        Fc[i]          = fc
+        Pl[i]          = pl 
+        εyyt[i]       += ε̇yyt*Δt
+        lambda_dot[i]  = λ̇
+        sec_inv[i]     = τII
     end
 end
 
@@ -204,7 +206,7 @@ function main(σ0)
         #---------------#
         K   = 10e6,#6.6666666667e6, # K = 3/2*Gv in Vermeer (1990)
         G   = 10e6,
-        lc  = 0.01,  
+        lc  = 0.003,  # 1/3 dx or it does not converge even with my slopy tol 
         ν   = 0., 
         c   = 0.0e4,
         ϕ   = 40/180*π,
@@ -213,8 +215,8 @@ function main(σ0)
         ρ   = 2000.,
         ηvp = 0e7,
         γ̇xy = 0.00001,
-        Δt  = 0.1,
-        nt  = 1600*5*10,
+        Δt  = 1,
+        nt  = 1600*5,
         law = :MC_Vermeer1990,
         oop = :Vermeer1990,
         pl  = true)
@@ -264,7 +266,7 @@ function main(σ0)
     yv  = LinRange(y.min,      y.max,      Ncy+1)
 
     rheo = (
-        c    = params.c/sc.σ*ones(Ncy+1).+250/sc.σ,
+        c    = params.c/sc.σ*ones(Ncy+1).+0.1/sc.σ,
         # c    = params.c/sc.σ*ones(Ncy+1).+0.001/sc.σ,
         # c    = params.c/sc.σ*ones(Ncy+1),
         ψ    = params.ψ      *ones(Ncy+1),
@@ -277,6 +279,7 @@ function main(σ0)
     )
 
     rheo.c[Int64(ceil(Ncy/2)+1)] = params.c/sc.σ
+    #rheo.c[Int64(floor(Ncy/2)+1):end] .= params.c/sc.σ
     # @. rheo.K = 2/3 .* rheo.G.*(1 .+ rheo.ν) ./ (1 .- 2 .* rheo.ν)
     # rheo.ϕ[Int64(floor(Ncy/2))] *= 0.99999999
     τxx  = τxxi*ones(Ncy+1)
@@ -289,6 +292,8 @@ function main(σ0)
     fc   = zeros(Ncy+1)
     pl   = zeros(Ncy+1)
     Pc   = zeros(Ncy+1)
+    lambda_dot = zeros(Ncy+1)
+    sec_inv    = zeros(Ncy+1)
     
     # rheo.G[1:Int64(floor(Ncy/2))] .*= 2.1
     # P[Int64(floor(Ncy/2))] = P[Int64(floor(Ncy/2))]*1.1
@@ -346,6 +351,7 @@ function main(σ0)
     # Globalisation
     LS = (
         α = [0.01 0.05 0.1 0.25 0.5 0.75 1.0], 
+        #α = [0.1 0.2 0.3 0.4 0.5 0.75 1.0],
         F = zeros(7),
     )
     
@@ -373,10 +379,10 @@ function main(σ0)
         x[ind.y+1:ind.p] .= P
         x[ind.p+1:end  ] .= ω̇z
 
-        ϵglob = 1e-13
+        ϵglob = 1e-8
 
         # Newton iterations
-        for iter=1:100
+        for iter=1:10000
 
             # Residual
             Res!(F, x, P, P0, τxx0, τyy0, τzz0, τxy0, Rz0, myz0, ρ, Vx0, Vy0, V_BC, σ_BC, rheo, ind, NumV, Δy, Δt )
@@ -403,14 +409,19 @@ function main(σ0)
         ω̇z .= x[ind.p+1:end  ]
 
         # Compute stress for postprocessing
-        ComputeStress!(τxx, τyy, τzz, τxy, Pc, Rz, myz, fc, pl, εyyt, x, P, P0, τxx0, τyy0, τzz0, τxy0, Rz0, myz0, V_BC, σ_BC, rheo, ind, NumV, Δy, Δt )
+        ComputeStress!(τxx, τyy, τzz, τxy, Pc, Rz, myz, fc, pl, εyyt, x, P, P0, τxx0, τyy0, τzz0, τxy0, Rz0, myz0, V_BC, σ_BC, rheo, ind, NumV, Δy, Δt, lambda_dot, sec_inv)
         P .= Pc #!!!!!!!!!
 
         # Postprocessing
+        # Probe model state
+        _, iA = findmax(P)
+        #iA    = 100
+        _, iB = findmax(lambda_dot)
+        @show iA,iB
         @printf("σyy_BC = %2.4e, max(f) = %2.4e\n", (τyy[end]-P[end])*sc.σ, maximum(fc)*sc.σ)
        # probes.fric[it] = -τxy[end]/(τyy[end]-P[end])
        #probes.fric[it] = -τxy[1]/(τyy[1]-P[1])
-        probes.fric[it] = -τxy[Int64(floor(Ncy/2)+1)]/(τyy[Int64(floor(Ncy/2)+1)]-P[Int64(floor(Ncy/2)+1)])
+        probes.fric[it] = -τxy[iB]/(τyy[iB]-P[iB])
 
         
         probes.εyy[it]  = εyyt[end]
@@ -428,8 +439,6 @@ function main(σ0)
         # probes.θs3_out[it]  = atand(σ3.z[iA] ./ σ3.x[iA])
         # probes.θs3_in[it]   = atand(σ3.z[iB] ./ σ3.x[iB])
          # Probe model state
-        iA = 1
-        iB = floor(Ncy/2)+1
          probes.θs3_out[it]  = atand(σ3.z[iA] ./ σ3.x[iA])
          probes.θs3_in[it]   = atand(σ3.z[iB] ./ σ3.x[iB])
 
@@ -468,7 +477,7 @@ function main(σ0)
             # p4 = plot((1:it)*ε̇0*Δt*100, probes.εyy[1:it]*100)
             # p4 = plot(εyyt[1:end-1], yv[1:end-1])
             # p4 = scatter!(εyyt[pl.==1], yv[pl.==1])
-            p4 = heatmap((1:Nt)*ε̇0*Δt*100, yv, maps.ε̇xy[1:Nt,:]', title="ε̇xy", xlabel="strain", ylabel="y") # , clim=(0,20)
+            p4 = heatmap((1:Nt)*ε̇0*Δt*100, yv, maps.ε̇xy[1:Nt,:]', title="ε̇xy", xlabel="strain", ylabel="y", clim=(0,20)) # , clim=(0,20)
             display(plot(p1,p2,p3,p4))
 
             @show Pi, τxxi, τyyi, τzzi, τxyi
